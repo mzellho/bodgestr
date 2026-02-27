@@ -1,0 +1,25 @@
+# Rust / Cargo
+/target/
+
+# Debian build artifacts (but keep debian/ directory)
+*.debhelper.log
+*.dsc
+*.tar.gz
+*.changes
+*.deb
+..?*
+.debdone
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+
+# Logs
+*.log

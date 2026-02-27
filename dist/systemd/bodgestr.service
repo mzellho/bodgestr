@@ -1,0 +1,31 @@
+[Unit]
+Description=bodgestr – touch gesture daemon
+Documentation=https://github.com/mzellho/bodgestr
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=bodgestr
+Group=bodgestr
+Environment="DISPLAY=:0"
+ExecStart=/usr/bin/bodgestr
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Device access
+PrivateDevices=no
+SupplementaryGroups=input
+
+# Working directory
+WorkingDirectory=/var/lib/bodgestr
+
+# Hardening
+ProtectSystem=strict
+ReadWritePaths=/tmp /var/log/bodgestr
+PrivateTmp=true
+
+[Install]
+WantedBy=graphical.target

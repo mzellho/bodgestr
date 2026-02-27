@@ -1,0 +1,26 @@
+Source: bodgestr
+Section: utils
+Priority: optional
+Maintainer: Max Zellhofer <max.zellhofer@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mzellho/bodgestr
+Vcs-Git: https://github.com/mzellho/bodgestr.git
+Vcs-Browser: https://github.com/mzellho/bodgestr
+Rules-Requires-Root: no
+
+Package: bodgestr
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, systemd
+Recommends: xdotool, logrotate
+Description: Touch gesture daemon for Linux touchscreens
+ bodgestr is a lightweight daemon that recognizes multi-touch gestures
+ (tap, double-tap, long-press, swipe, pinch) on Linux input devices
+ and executes configurable shell commands. Config-driven via TOML,
+ supports multiple devices, auto-reconnect, and runs as a systemd service.
+ .
+ Supported gestures:
+  - Swipes (left, right, up, down)
+  - Taps (single and double)
+  - Long press
+  - Pinch (in and out)

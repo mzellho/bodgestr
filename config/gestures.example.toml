@@ -1,0 +1,95 @@
+# bodgestr – example configuration
+#
+# Copy to /etc/bodgestr/gestures.toml and adjust for your setup.
+# Run 'bodgestr --list-devices' to find your USB ID.
+#
+# Actions are arbitrary shell commands executed via `sh -c`.
+# Use xdotool, notify-send, scripts, or anything else available on your system.
+
+[global]
+log_level = "info"
+log_file = "/var/log/bodgestr/bodgestr.log"
+
+[global.thresholds]
+swipe_time_max = 0.9
+swipe_distance_min_pct = 0.15
+angle_tolerance_deg = 30.0
+tap_time_max = 0.2
+long_press_time_min = 0.8
+double_tap_interval = 0.3
+tap_distance_max = 50.0
+double_tap_distance_max = 50.0
+pinch_threshold_pct = 0.1
+
+# -- Global gesture defaults (inherited by all devices) ---
+#
+# Each action is a shell command run via `sh -c "<action>"`.
+# Examples:
+#   xdotool:      "xdotool key ctrl+Tab"
+#   scripts:      "/usr/local/bin/my-script.sh"
+#   pipelines:    "echo swipe | logger -t bodgestr"
+#   notifications: "notify-send 'Gesture' 'Swipe detected!'"
+#   brightness:   "brightnessctl set +10%"
+#   media:        "playerctl next"
+
+[global.gestures.tap]
+action = "xdotool click 1"
+enabled = false
+
+[global.gestures.double_tap]
+action = "xdotool click --clearmodifiers 3"
+enabled = false
+
+[global.gestures.long_press]
+action = "xdotool key --clearmodifiers Super_L"
+enabled = false
+
+[global.gestures.swipe_left]
+action = "xdotool key --clearmodifiers alt+Left"
+enabled = false
+
+[global.gestures.swipe_right]
+action = "xdotool key --clearmodifiers alt+Right"
+enabled = false
+
+[global.gestures.swipe_up]
+action = "xdotool key --clearmodifiers super+Up"
+enabled = false
+
+[global.gestures.swipe_down]
+action = "xdotool key --clearmodifiers super+Down"
+enabled = false
+
+[global.gestures.pinch_in]
+action = "xdotool key --clearmodifiers ctrl+minus"
+enabled = false
+
+[global.gestures.pinch_out]
+action = "xdotool key --clearmodifiers ctrl+plus"
+enabled = false
+
+# -- Device registration ---------------------------------
+# Uncomment and adjust for your device.
+#
+# [device.kiosk]
+# device_usb_id = "1234:5678"
+# enabled = true
+#
+# # Override a gesture for this device only:
+# [device.kiosk.gestures.swipe_left]
+# action = "xdotool key Next"
+#
+# # Use a shell script instead of xdotool:
+# [device.kiosk.gestures.long_press]
+# action = "/usr/local/bin/toggle-onscreen-keyboard.sh"
+# enabled = true
+#
+# # Chain commands:
+# [device.kiosk.gestures.swipe_up]
+# action = "brightnessctl set +10% && notify-send 'Brightness' 'Up'"
+# enabled = true
+#
+# # Override thresholds for this device only:
+# [device.kiosk.thresholds]
+# swipe_time_max = 1.5
+

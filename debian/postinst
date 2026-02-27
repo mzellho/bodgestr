@@ -1,0 +1,45 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create required directories
+        mkdir -p /etc/bodgestr
+        mkdir -p /var/lib/bodgestr
+        mkdir -p /var/log/bodgestr
+
+        # Set permissions
+        chown -R bodgestr:bodgestr /var/lib/bodgestr 2>/dev/null || true
+        chmod 755 /etc/bodgestr
+        chmod 755 /var/lib/bodgestr
+
+        # Create log file with correct ownership
+        chown bodgestr:bodgestr /var/log/bodgestr 2>/dev/null || true
+        touch /var/log/bodgestr/bodgestr.log
+        chown bodgestr:bodgestr /var/log/bodgestr/bodgestr.log 2>/dev/null || true
+        chmod 644 /var/log/bodgestr/bodgestr.log
+
+        # Allow bodgestr user to access input devices
+        if ! getent group input > /dev/null 2>&1; then
+            addgroup --system input 2>/dev/null || true
+        fi
+        usermod -a -G input bodgestr 2>/dev/null || true
+
+        # Install default config if none exists
+        if [ ! -f /etc/bodgestr/gestures.toml ]; then
+            cp /etc/bodgestr/gestures.example.toml /etc/bodgestr/gestures.toml
+            chmod 644 /etc/bodgestr/gestures.toml
+            echo "bodgestr: installed default config to /etc/bodgestr/gestures.toml"
+            echo "bodgestr: run 'bodgestr --list-devices' and edit the config before starting."
+        fi
+
+        # Reload systemd
+        if command -v systemctl > /dev/null 2>&1; then
+            systemctl daemon-reload 2>/dev/null || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

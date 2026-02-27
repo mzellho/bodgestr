@@ -1,0 +1,301 @@
+name: Build Packages
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ----------------------------------------------
+  # Lint (clippy + fmt)
+  # ----------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  # ----------------------------------------------
+  # Tests (with JUnit report)
+  # ----------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run tests
+        run: cargo nextest run --profile ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: target/nextest/ci/junit.xml
+
+      - name: Test report
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: target/nextest/ci/junit.xml
+          check_name: Test Results
+          time_unit: seconds
+
+  # ----------------------------------------------
+  # Cross-compile release binaries (amd64 + arm64)
+  # ----------------------------------------------
+  build:
+    needs: [ lint, test ]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: amd64
+          - target: aarch64-unknown-linux-gnu
+            arch: arm64
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        uses: taiki-e/install-action@cross
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/bodgestr
+
+  # ----------------------------------------------
+  # DEB packages (bookworm/trixie × amd64/arm64)
+  # Uses pre-built cross-compiled binaries
+  # ----------------------------------------------
+  deb:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [ bookworm, trixie ]
+        arch: [ amd64, arm64 ]
+    container:
+      image: debian:${{ matrix.distro }}
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential debhelper devscripts \
+            ca-certificates fakeroot lintian
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download pre-built binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: target/release
+
+      - name: Mark binary executable
+        run: chmod +x target/release/bodgestr
+
+      - name: Build DEB (skip cargo build)
+        env:
+          DEB_BUILD_OPTIONS: nocheck
+        run: |
+          # Override debian/rules to skip cargo build – binary already present
+          cat > debian/rules <<'RULES'
+          #!/usr/bin/make -f
+          %:
+          	dh $@
+          override_dh_auto_build:
+          	@echo "Using pre-built cross-compiled binary"
+          override_dh_auto_install:
+          	install -Dm755 target/release/bodgestr         debian/bodgestr/usr/bin/bodgestr
+          	install -Dm644 dist/systemd/bodgestr.service   debian/bodgestr/usr/lib/systemd/system/bodgestr.service
+          	install -Dm644 config/gestures.example.toml      debian/bodgestr/etc/bodgestr/gestures.example.toml
+          	install -Dm644 dist/logrotate/bodgestr         debian/bodgestr/etc/logrotate.d/bodgestr
+          override_dh_auto_test:
+          	@echo "Tests already ran in CI"
+          override_dh_auto_clean:
+          	@echo "Nothing to clean"
+          override_dh_strip:
+          	@echo "Binary already stripped via Cargo profile"
+          override_dh_makeshlibs:
+          	@echo "Skipping – cross-compiled binary"
+          override_dh_shlibdeps:
+          	@echo "Skipping – cross-compiled binary"
+          RULES
+          sed -i 's/^          //' debian/rules
+          chmod +x debian/rules
+          dpkg-buildpackage -us -uc -b -a${{ matrix.arch }}
+
+      - name: Run lintian
+        run: lintian ../*.deb --no-tag-display-limit || true
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          for f in ../*.deb; do
+            name=$(basename "$f" .deb)
+            cp "$f" "artifacts/${name}_${{ matrix.distro }}.deb"
+          done
+
+      - name: Upload DEB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.distro }}-${{ matrix.arch }}
+          path: artifacts/*.deb
+
+  # ----------------------------------------------
+  # RPM packages (fc41/fc42 × x86_64/aarch64)
+  # Uses pre-built cross-compiled binaries
+  # ----------------------------------------------
+  rpm:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        fedora: [ 42, 43 ]
+        include:
+          - arch: amd64
+            rpm_arch: x86_64
+          - arch: arm64
+            rpm_arch: aarch64
+        arch: [ amd64, arm64 ]
+    container:
+      image: fedora:${{ matrix.fedora }}
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build systemd-rpm-macros \
+            rpmdevtools rpmlint
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download pre-built binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: prebuilt
+
+      - name: Mark binary executable
+        run: chmod +x prebuilt/bodgestr
+
+      - name: Prepare RPM build tree
+        run: |
+          rpmdev-setuptree
+          SPEC_VERSION=$(grep -Po '(?<=^Version:\s{8})\S+' dist/rpm/bodgestr.spec)
+          mkdir -p bodgestr-${SPEC_VERSION}
+          cp -r src config dist Cargo.toml Cargo.lock README.md LICENSE \
+                prebuilt bodgestr-${SPEC_VERSION}/
+          tar czf ~/rpmbuild/SOURCES/bodgestr-${SPEC_VERSION}.tar.gz \
+                bodgestr-${SPEC_VERSION}
+
+          # Patch spec to use pre-built binary instead of cargo build
+          sed -e '1i %global debug_package %{nil}' \
+              -e 's|^cargo build --release|echo "Using pre-built binary"|' \
+              -e 's|target/release/bodgestr|prebuilt/bodgestr|' \
+              -e '/^BuildRequires:.*gcc/d' \
+              dist/rpm/bodgestr.spec > ~/rpmbuild/SPECS/bodgestr.spec
+
+      - name: Build RPM
+        run: rpmbuild -bb --target ${{ matrix.rpm_arch }} ~/rpmbuild/SPECS/bodgestr.spec
+
+      - name: Run rpmlint
+        run: rpmlint ~/rpmbuild/RPMS/${{ matrix.rpm_arch }}/*.rpm || true
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          cp ~/rpmbuild/RPMS/${{ matrix.rpm_arch }}/*.rpm artifacts/
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-fc${{ matrix.fedora }}-${{ matrix.rpm_arch }}
+          path: artifacts/*.rpm
+
+  # ----------------------------------------------
+  # Create GitHub Release (only on tags)
+  # ----------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ build, deb, rpm ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: List packages
+        run: find packages -type f | sort
+
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" =~ -(alpha|beta|rc|dev) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*
+          generate_release_notes: true
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}

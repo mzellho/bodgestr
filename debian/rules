@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release
+
+override_dh_auto_install:
+	install -Dm755 target/release/bodgestr         debian/bodgestr/usr/bin/bodgestr
+	install -Dm644 dist/systemd/bodgestr.service   debian/bodgestr/usr/lib/systemd/system/bodgestr.service
+	install -Dm644 config/gestures.example.toml      debian/bodgestr/etc/bodgestr/gestures.example.toml
+	install -Dm644 dist/logrotate/bodgestr        debian/bodgestr/etc/logrotate.d/bodgestr
+
+override_dh_auto_test:
+	cargo test --release
+
+override_dh_auto_clean:
+	cargo clean || true
+

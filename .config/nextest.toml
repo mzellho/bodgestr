@@ -1,0 +1,9 @@
+[profile.ci]
+# Produce JUnit XML for CI test reporting.
+[profile.ci.junit]
+path = "junit.xml"
+report-name = "bodgestr tests"
+# Ensure each <testcase> includes a valid time="…" attribute.
+store-success-output = false
+store-failure-output = true
+

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+# Create bodgestr system group if it doesn't exist
+if ! getent group bodgestr > /dev/null 2>&1; then
+    addgroup --system bodgestr 2>/dev/null || true
+fi
+
+# Create bodgestr system user if it doesn't exist
+if ! getent passwd bodgestr > /dev/null 2>&1; then
+    adduser --system --ingroup bodgestr --home /var/lib/bodgestr \
+            --disabled-login --shell /usr/sbin/nologin bodgestr 2>/dev/null || true
+fi
+
+exit 0
+
